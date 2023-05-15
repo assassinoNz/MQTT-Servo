@@ -1,92 +1,84 @@
 #include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiClient.h>
-#include <AsyncMqttClient.h>
-#include <ArduinoJson.h>
+#include <PubSubClient.h>
 
-namespace IO {
-    const unsigned char PIN_RESET = D4;
-}
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
 
-namespace WIFI {
-    const char *SSID = "ssid";
-    const char *PSK = "password";
+const char *ssid = "ssid";
+const char *password = "psk";
 
-    WiFiClient client;
-}
+char *mqttServer = "broker.hivemq.com";
+int mqttPort = 1883;
 
-namespace MQTT {
-    const char *HOST = "192.168.1.4";
-    const short HOST_PORT = 1883;
-    const char *HOST_USERNAME = "username";
-    const char *HOST_PASSWORD = "password";
-    const char *CLIENT_ID = "client_id";
-    const char *SERVO_TOPIC = "servo"; 
+void reconnect()
+{
+    Serial.println("Connecting to MQTT Broker...");
+    while (!mqttClient.connected())
+    {
+        Serial.println("Reconnecting to MQTT Broker..");
+        String clientId = "dilina";
 
-    AsyncMqttClient client;
-
-    void onMqttConnect(bool sessionPresent) {
-        Serial.println("\n[MQTT]: Established connection HOST: " + String(MQTT::HOST) + ":" + String(MQTT::HOST_PORT));
-
-        client.subscribe(MQTT::SERVO_TOPIC, 0);
-    }
-
-    void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
-        Serial.print("\n[MQTT]: Disconnected BECAUSE: " + String((unsigned char) reason));
-    }
-
-    void onMqttPublish(uint16_t packetId) {
-        Serial.println("\n[MQTT]: Published PACKET_ID: " + String(packetId));
-    }
-
-    void onMqttSubscribe(uint16_t packetId, uint8_t qos) {
-        Serial.println("\n[MQTT]: Subscribed PACKET_ID: " + String(packetId) + " QOS: " + qos);
-    }
-
-    void onMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total) {
-        Serial.println("\n[MQTT]: Recieved TOPIC: " + String(topic) + " PAYLOAD: " + String(payload));
-
-        if (strcmp(topic, MQTT::SERVO_TOPIC) == 0) {
-            DynamicJsonDocument message(1024);
-            deserializeJson(message, payload);
-
-            const bool state = message["state"];
-            pinMode(LED_BUILTIN, OUTPUT);
-            digitalWrite(LED_BUILTIN, !state); //WARNING: LED_BUILTIN seems to be active low
+        if (mqttClient.connect(clientId.c_str()))
+        {
+            Serial.println("Connected.");
+            // subscribe to topic
+            mqttClient.subscribe("lednodeesp32");
         }
     }
 }
-
-void setup() {
-    //Serial communication
-    Serial.begin(115200);
-    Serial.println("\n==================================================================");
-    Serial.println("[SETUP]: Configured Serial communication AT: 115200");
-
-    //WiFi
-    Serial.println("[SETUP]: Connecting to WiFi SSID: " + String(WIFI::SSID));
-    WiFi.begin(WIFI::SSID, WIFI::PSK);
-    while (WiFi.status() != WL_CONNECTED) {
-        Serial.print(".");
-        delay(500);
+void callback(char *topic, byte *payload, unsigned int length)
+{
+    // Serial.print("Callback - ");
+    // Serial.print("Message:");
+    String message;
+    for (int i = 0; i < length; i++)
+    {
+        message += (char)payload[i];
+        // Serial.print((char)payload[i]);
     }
-    Serial.println("\n[WIFI]: Connected to WiFi SSID: " + String(WIFI::SSID));
-
-    //MQTT
-    Serial.println("[SETUP]: Configuring MQTT");
-    MQTT::client.setServer(MQTT::HOST, MQTT::HOST_PORT);
-    MQTT::client.setClientId(MQTT::CLIENT_ID);
-    MQTT::client.setCredentials(MQTT::HOST_USERNAME, MQTT::HOST_PASSWORD);
-    MQTT::client.onConnect(MQTT::onMqttConnect);
-    MQTT::client.onDisconnect(MQTT::onMqttDisconnect);
-    MQTT::client.onPublish(MQTT::onMqttPublish);
-    MQTT::client.onSubscribe(MQTT::onMqttSubscribe);
-    MQTT::client.onMessage(MQTT::onMqttMessage);
-    MQTT::client.connect();
+    Serial.println("");
+    if (message == "on")
+    {
+        digitalWrite(LED_BUILTIN, HIGH);
+    }
+    else if (message == "off")
+    {
+        digitalWrite(LED_BUILTIN, LOW);
+    }
 }
 
-void loop() {
-    // if (WiFi.status() == WL_CONNECTED) {
-    //     webSocketClient.loop();
-    // }
+void setupMQTT()
+{
+    mqttClient.setServer(mqttServer, mqttPort);
+    mqttClient.setCallback(callback);
+}
+
+void setup()
+{
+    Serial.begin(115200);
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("");
+    Serial.println("Connected to Wi-Fi");
+
+    setupMQTT();
+}
+
+void loop()
+{
+    if (!mqttClient.connected())
+        reconnect();
+    mqttClient.loop();
+    long now = millis();
+    long previous_time = 0;
+
+    if (now - previous_time > 1000)
+    {
+        previous_time = now;
+    }
 }
