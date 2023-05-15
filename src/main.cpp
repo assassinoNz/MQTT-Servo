@@ -1,7 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
-#include <ESPAsyncTCP.h>
 #include <AsyncMqttClient.h>
 #include <ArduinoJson.h>
 
